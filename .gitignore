@@ -1,0 +1,8 @@
+# Your WiFi credentials
+secrets.h
+
+# Build output
+build/
+*.bin
+*.elf
+.DS_Store
