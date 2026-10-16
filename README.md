@@ -12,7 +12,27 @@ Two versions:
 | Shows | Song, section with progress strip, next section / next song, loop counter, laptop power state | Same, plus the setlist with time left |
 | Board | [Waveshare ESP32-C5-LCD-1.47](https://www.waveshare.com/esp32-c5-lcd-1.47.htm) | [Waveshare ESP32-C5-Touch-LCD-3.5](https://www.waveshare.com/esp32-c5-touch-lcd-3.5.htm) |
 
-![3.5" version: playing, and inside a 4-bar loop](docs/3.5-playing-and-loop.png)
+## Screenshots
+
+### 3.5" version (480×320)
+
+Playing, then inside a 4-bar loop:
+
+![3.5" display: playing a verse with the setlist on the right, then a chorus inside a 4-bar loop](docs/3.5-playing-and-loop.png)
+
+Laptop power state in the status bar:
+
+![3.5" display status bar showing AC POWER, then a red ON BATTERY badge](docs/3.5-power-status.png)
+
+Retry screen, after AbleSet or the Wi-Fi could not be found:
+
+![3.5" display retry screens: ABLESET NOT FOUND and NO WIFI, each with a RETRY button](docs/3.5-retry.png)
+
+### 1.47" version (320×172)
+
+Shown at actual pixel size. Playing, inside a loop with the laptop on battery, stopped on an outro with the next song, and the retry screen:
+
+![1.47" display: playing, loop with ON BATTERY badge, stopped, retry screen](docs/1.47-screens.png)
 
 ## How it works
 
@@ -31,11 +51,6 @@ The display joins your Wi-Fi, finds AbleSet on the network on its own (no IP add
 
 - **Setlist** on the right, with the time left in the set.
 - Accented names display as-is (the 1.47" uses a built-in font, so `é` shows as `E`).
-
-![1.47" version: playing, loop with laptop on battery, stopped, retry screen](docs/1.47-screens.png)
-
-![Laptop power status](docs/3.5-power-status.png)
-![Retry screen](docs/3.5-retry.png)
 
 ## Setup
 
