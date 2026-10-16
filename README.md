@@ -16,6 +16,8 @@ Two versions:
 
 ### 3.5" version (480×320)
 
+Board: [Waveshare ESP32-C5-Touch-LCD-3.5](https://www.waveshare.com/esp32-c5-touch-lcd-3.5.htm).
+
 Playing, then inside a 4-bar loop:
 
 ![3.5" display: playing a verse with the setlist on the right, then a chorus inside a 4-bar loop](docs/3.5-playing-and-loop.png)
@@ -29,6 +31,8 @@ Retry screen, after AbleSet or the Wi-Fi could not be found:
 ![3.5" display retry screens: ABLESET NOT FOUND and NO WIFI, each with a RETRY button](docs/3.5-retry.png)
 
 ### 1.47" version (320×172)
+
+Board: [Waveshare ESP32-C5-LCD-1.47](https://www.waveshare.com/esp32-c5-lcd-1.47.htm).
 
 Shown at actual pixel size. Playing, inside a loop with the laptop on battery, stopped on an outro with the next song, and the retry screen:
 
