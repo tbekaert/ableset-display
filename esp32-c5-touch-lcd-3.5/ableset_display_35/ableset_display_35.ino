@@ -80,6 +80,11 @@ static const uint8_t  BACKLIGHT_PCT = 100;
 // false = whole bars light up as they start (one redraw per bar).
 static const bool     PROGRESS_BY_BEAT = true;
 
+// Song descriptions from AbleSet (the song's "description" field), shown in
+// a smaller dim font under the song name and under every name in the
+// setlist. false = names only, which also fits 9 setlist rows instead of 5.
+static const bool     SHOW_SONG_DESCRIPTIONS = true;
+
 // Screen orientation. 1 is correct for this board (confirmed on hardware);
 // 3 is the same landscape view upside down.
 static const uint8_t  ROTATION = 1;
@@ -144,9 +149,10 @@ static const int Z_NEXT_H   = SCR_H - Z_NEXT_Y;                     // 90 (+ rou
 
 // Setlist sidebar
 static const int SL_HEAD_H  = Z_STATUS_H;
-static const int SL_ROW_H   = 30;
-static const int SL_PITCH   = 32;
-static const int SL_ROWS    = (SCR_H - SL_HEAD_H - GAP + 2) / SL_PITCH;   // 9
+static const int SL_NAME_H  = 30;                    // name line of a setlist row
+static const int SL_ROW_H   = SHOW_SONG_DESCRIPTIONS ? 54 : SL_NAME_H;
+static const int SL_PITCH   = SL_ROW_H + 2;
+static const int SL_ROWS    = (SCR_H - SL_HEAD_H - GAP + 2) / SL_PITCH;   // 5 with descriptions, 9 without
 static const int MAX_SONGS  = 64;
 
 static const uint16_t COL_BG     = RGB565_BLACK;
@@ -180,6 +186,8 @@ enum : int { F58 = 0, F54, F50, F46, F42, F38, F34, F32, F30, F28, F26, F24, F22
 // truncated with "...". F38 is one step bigger, F30 one step smaller.
 static const int LEFT_FONT = F34;   // song / section / next, all three rows
 static const int SIDE_FONT = F22;   // every name in the setlist
+static const int SONG_DESC_FONT = F18;   // description under the song name
+static const int SIDE_DESC_FONT = F16;   // description under each setlist name
 
 static const uint8_t *const FONT_UI    = u8g2_font_helvB12_tf;  // status bar
 static const uint8_t *const FONT_LABEL = u8g2_font_helvB10_tf;  // small cell labels
@@ -202,6 +210,7 @@ String connectedSsid = "";
 
 struct State {
   String song      = "";
+  String songDesc  = "";
   String section   = "";
   String nextSect  = "";
   String nextSong  = "";
@@ -226,9 +235,12 @@ struct State {
 // Setlist. AbleSet sends it at subscribe time and again only if it changes;
 // the periodic resync doesn't ask for it.
 String netSongs[MAX_SONGS];   // written by the receive task
+String netSongDescs[MAX_SONGS];
 int netNSongs = 0;
-uint32_t netSongsVersion = 0;
+int netNSongDescs = 0;
+uint32_t netSongsVersion = 0; // bumped when either list changes
 String songs[MAX_SONGS];      // snapshot used for drawing
+String songDescs[MAX_SONGS];
 int nSongs = 0;
 uint32_t songsVersion = 0;    // bumped whenever the list changes
 
@@ -434,18 +446,19 @@ static void appendCodepoint(String &out, uint32_t cp) {
   out += (char)(0x80 | (cp & 0x3F));
 }
 
-// Uppercase for display and keep only what the fonts can draw (ASCII +
-// Latin-1): é -> É, œ -> OE, typographic dashes/quotes -> ASCII, anything else
-// (emoji, other scripts) is dropped. Strings are UTF-8.
-static String upperUtf8(const String &in) {
+// Keep only what the fonts can draw (ASCII + Latin-1): œ -> OE, typographic
+// dashes/quotes -> ASCII, anything else (emoji, other scripts) is dropped.
+// With upper, also uppercase (é -> É). Strings are UTF-8.
+static String foldUtf8(const String &in, bool upper) {
   String out;
   unsigned i = 0;
   while (i < in.length()) {
     uint32_t cp = nextCodepoint(in, i);
-    if (cp >= 'a' && cp <= 'z')                         cp -= 32;
+    if (!upper)                                         { /* keep case */ }
+    else if (cp >= 'a' && cp <= 'z')                    cp -= 32;
     else if (cp >= 0xE0 && cp <= 0xFE && cp != 0xF7)    cp -= 0x20;
     else if (cp == 0xFF)                                cp = 'Y';
-    else if (cp == 0x152 || cp == 0x153)              { out += "OE"; continue; }
+    if (cp == 0x152 || cp == 0x153)                   { out += upper ? "OE" : "oe"; continue; }
     else if (cp == 0x2013 || cp == 0x2014 || cp == 0x2212) cp = '-';
     else if (cp >= 0x2018 && cp <= 0x201B)              cp = '\'';
     else if (cp >= 0x201C && cp <= 0x201F)              cp = '"';
@@ -455,6 +468,8 @@ static String upperUtf8(const String &in) {
   }
   return out;
 }
+
+static String upperUtf8(const String &in) { return foldUtf8(in, true); }
 
 // Drop the last UTF-8 character.
 static void popUtf8(String &s) {
@@ -654,6 +669,26 @@ static String cleanName(const String &in) {
   return name;
 }
 
+// Descriptions can be several lines in AbleSet; the display has room for one.
+// Keep the first non-empty line, as typed (not uppercased: that keeps it
+// visually secondary to the name).
+static String cleanDesc(const String &in) {
+  if (!SHOW_SONG_DESCRIPTIONS) return String("");
+  String d = in;
+  d.replace("\r", "\n");
+  int start = 0, len = d.length();
+  while (start < len) {
+    int nl = d.indexOf('\n', start);
+    String line = (nl < 0) ? d.substring(start) : d.substring(start, nl);
+    line.trim();
+    while (line.indexOf("  ") >= 0) line.replace("  ", " ");
+    if (line.length()) return foldUtf8(line, false);
+    if (nl < 0) break;
+    start = nl + 1;
+  }
+  return String("");
+}
+
 // ---- left column content -----------------------------------------------------
 
 // Text boxes of the three left rows (the next row has a small label on top).
@@ -701,8 +736,16 @@ static NextContent nextContent() {
 
 static void drawSong() {
   g->fillRect(0, Z_SONG_Y, LEFT_W, ROW_H, COL_BG);
-  uint16_t c = cleanName(st.song).length() ? COL_TEXT : COL_ERR;
-  drawText(LX, SONG_BOX_Y, LW, SONG_BOX_H, songText(), c, LEFT_FONT, LEFT_FONT, 1, ALIGN_LEFT);
+  bool haveName = cleanName(st.song).length() > 0;
+  uint16_t c = haveName ? COL_TEXT : COL_ERR;
+  String desc = haveName ? cleanDesc(st.songDesc) : String("");
+  if (desc.length()) {
+    // Name in the upper part of the row, description under it, smaller and dim.
+    drawText(LX, SONG_BOX_Y + 4, LW, 50, songText(), c, LEFT_FONT, LEFT_FONT, 1, ALIGN_LEFT);
+    drawText(LX, SONG_BOX_Y + 58, LW, 30, desc, COL_DIM, SONG_DESC_FONT, SONG_DESC_FONT, 1, ALIGN_LEFT);
+  } else {
+    drawText(LX, SONG_BOX_Y, LW, SONG_BOX_H, songText(), c, LEFT_FONT, LEFT_FONT, 1, ALIGN_LEFT);
+  }
   pushRect(0, Z_SONG_Y, LEFT_W, ROW_H);
 }
 
@@ -864,11 +907,18 @@ static void drawSetlist(bool force) {
     int y = SL_HEAD_H + GAP;
     for (int i = start; i < nSongs && i < start + SL_ROWS; i++, y += SL_PITCH) {
       bool isCur = (i == cur);
+      uint16_t bg = isCur ? COL_CURROW : COL_SIDE;
       uint16_t fg = isCur ? COL_TEXT : (i < cur ? COL_PAST : COL_FUTURE);
-      if (isCur) g->fillRect(SIDE_X, y, SIDE_W, SL_ROW_H, COL_CURROW);
+      if (isCur) g->fillRect(SIDE_X, y, SIDE_W, SL_ROW_H, bg);
 
-      drawText(SL_NAME_X, y, SL_NAME_W, SL_ROW_H, upperUtf8(cleanName(songs[i])), fg,
+      drawText(SL_NAME_X, y, SL_NAME_W, SL_NAME_H, upperUtf8(cleanName(songs[i])), fg,
                SIDE_FONT, SIDE_FONT, 1, ALIGN_LEFT);
+      // Description under the name, in the name's colour faded towards the
+      // row background so it stays secondary whatever the row's state.
+      String desc = cleanDesc(songDescs[i]);
+      if (desc.length())
+        drawText(SL_NAME_X, y + SL_NAME_H, SL_NAME_W, SL_ROW_H - SL_NAME_H, desc,
+                 blend565(fg, bg, 0.45f), SIDE_DESC_FONT, SIDE_DESC_FONT, 1, ALIGN_LEFT);
     }
   }
   pushRect(SIDE_X, top, SIDE_W, SCR_H - top);
@@ -883,9 +933,10 @@ static void render() {
     drawn.playing = st.playing; drawn.liveLinked = st.liveLinked;
   }
 
-  if (forceRedraw || st.song != drawn.song) {
+  if (forceRedraw || st.song != drawn.song || st.songDesc != drawn.songDesc) {
     drawSong();
     drawn.song = st.song;
+    drawn.songDesc = st.songDesc;
   }
 
   String ps = progressSig();
@@ -935,6 +986,7 @@ static void oscSend(OscOut &m) {
 
 static const char *FILTERS[] = {
   "/setlist/activeSongName",
+  "/setlist/activeSongDescription",
   "/setlist/activeSongIndex",
   "/setlist/activeSectionName",
   "/setlist/activeSectionColor",
@@ -946,6 +998,7 @@ static const char *FILTERS[] = {
   "/setlist/activeSectionLoopCount",
   "/setlist/songCount",
   "/setlist/songs",
+  "/setlist/songDescriptions",
   "/setlist/remainingTimeInSet",
   "/setlist/activeSectionStart",
   "/setlist/activeSectionEnd",
@@ -987,6 +1040,7 @@ static void sendGetValues() {
 // and the values AbleSet pushes continuously anyway.
 static const char *RESYNC_VALUES[] = {
   "/setlist/activeSongName",
+  "/setlist/activeSongDescription",
   "/setlist/activeSongIndex",
   "/setlist/activeSectionName",
   "/setlist/activeSectionColor",
@@ -1164,6 +1218,8 @@ static void handleMessage(const char *addr, OscArg *args, int nArgs) {
 
   if (!strcmp(addr, "/setlist/activeSongName")) {
     net.song = (nArgs > 0 && args[0].type == 's') ? String(args[0].s) : String("");
+  } else if (!strcmp(addr, "/setlist/activeSongDescription")) {
+    net.songDesc = (nArgs > 0 && args[0].type == 's') ? String(args[0].s) : String("");
   } else if (!strcmp(addr, "/setlist/activeSectionName")) {
     net.section = (nArgs > 0 && args[0].type == 's') ? String(args[0].s) : String("");
   } else if (!strcmp(addr, "/setlist/nextSectionName")) {
@@ -1196,6 +1252,18 @@ static void handleMessage(const char *addr, OscArg *args, int nArgs) {
       netSongsVersion++;
       Serial.printf("Setlist received: %d songs\n", n);
     }
+  } else if (!strcmp(addr, "/setlist/songDescriptions")) {
+    // Same shape as /setlist/songs: one string per song, same order.
+    int n = 0;
+    bool changed = false;
+    for (int i = 0; i < nArgs && n < MAX_SONGS; i++) {
+      const char *d = (args[i].type == 's' && args[i].s) ? args[i].s : "";
+      if (n >= netNSongDescs || netSongDescs[n] != d) changed = true;
+      netSongDescs[n++] = d;
+    }
+    if (n != netNSongDescs) changed = true;
+    netNSongDescs = n;
+    if (changed) netSongsVersion++;
   } else if (!strcmp(addr, "/computer/onBattery")) {
     int v = nArgs > 0 ? (argNum(args[0]) > 0.5f ? 1 : 0) : -1;
     if (v != net.onBattery) Serial.printf("AbleSet computer %s\n", v == 1 ? "ON BATTERY" : "on AC power");
@@ -1655,7 +1723,7 @@ static void retryNow() {
 // ============================================================================
 
 static void oscRxTask(void *) {
-  static uint8_t buf[4096];   // /setlist/songs and bundles can be big
+  static uint8_t buf[8192];   // /setlist/songs, songDescriptions and bundles can be big
   for (;;) {
     struct sockaddr_in from;
     socklen_t fl = sizeof(from);
@@ -1704,6 +1772,7 @@ static void takeSnapshot() {
   bool listChanged = (netSongsVersion != songsVersion);
   if (listChanged) {
     for (int i = 0; i < netNSongs; i++) songs[i] = netSongs[i];
+    for (int i = 0; i < MAX_SONGS; i++) songDescs[i] = (i < netNSongDescs) ? netSongDescs[i] : String("");
     nSongs = netNSongs;
     songsVersion = netSongsVersion;
   }

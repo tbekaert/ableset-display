@@ -9,7 +9,7 @@ Two versions:
 | | [ESP32-C5-LCD-1.47](esp32-c5-lcd-1.47) | [ESP32-C5-Touch-LCD-3.5](esp32-c5-touch-lcd-3.5) |
 |---|---|---|
 | Screen | 1.47" 320×172 | 3.5" 480×320, touch, in a case |
-| Shows | Song, section with progress strip, next section / next song, loop counter, laptop power state | Same, plus the setlist with time left |
+| Shows | Song, section with progress strip, next section / next song, loop counter, laptop power state | Same, plus song descriptions and the setlist with time left |
 | Board | [Waveshare ESP32-C5-LCD-1.47](https://www.waveshare.com/esp32-c5-lcd-1.47.htm) | [Waveshare ESP32-C5-Touch-LCD-3.5](https://www.waveshare.com/esp32-c5-touch-lcd-3.5.htm) |
 
 ## Screenshots
@@ -18,9 +18,13 @@ Two versions:
 
 Board: [Waveshare ESP32-C5-Touch-LCD-3.5](https://www.waveshare.com/esp32-c5-touch-lcd-3.5.htm).
 
-Playing, then inside a 4-bar loop:
+Playing, then inside a 4-bar loop. Song descriptions sit under the names, dimmer than the name:
 
 ![3.5" display: playing a verse with the setlist on the right, then a chorus inside a 4-bar loop](docs/3.5-playing-and-loop.png)
+
+Song descriptions on (default), then off with `SHOW_SONG_DESCRIPTIONS = false`, which fits 9 songs in the setlist:
+
+![3.5" display with song descriptions under the names, then the same screen without descriptions and a longer setlist](docs/3.5-descriptions-on-off.png)
 
 Laptop power state in the status bar:
 
@@ -54,6 +58,7 @@ The display joins your Wi-Fi, finds AbleSet on the network on its own (no IP add
 ### 3.5" version only
 
 - **Setlist** on the right, with the time left in the set.
+- **Song descriptions** from AbleSet, in a smaller dim font under the song name and under each setlist entry (`SHOW_SONG_DESCRIPTIONS = false` to hide them and fit 9 songs instead of 5).
 - Accented names display as-is (the 1.47" uses a built-in font, so `é` shows as `E`).
 
 ## Setup
@@ -99,6 +104,7 @@ Each sketch has a config block at the top. The most useful settings:
 | `SHOW_PROGRESS` | 1.47" only: `false` hides the progress strip |
 | `WIFI_ROUNDS` | Passes through the network list before showing Retry |
 | `USE_RGB_LED` | 1.47" only: status colour on the on-board LED |
+| `SHOW_SONG_DESCRIPTIONS` | 3.5" only: `false` hides song descriptions, so the setlist shows 9 songs instead of 5 |
 | `LEFT_FONT`, `SIDE_FONT` | 3.5" only: text sizes |
 
 ## Troubleshooting

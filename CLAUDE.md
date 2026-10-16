@@ -31,21 +31,25 @@ Toolchain:
 - **GFX Library for Arduino** (moononournation) 1.6.x.
 - **U8g2** (olikraus), 3.5" only, for its Logisoso fonts.
 
-arduino-cli:
+arduino-cli. On this machine there is no standalone install: use the one
+bundled with the Arduino IDE, with the IDE's config so it finds the cores.
+The esp32 core is installed as `esp32:esp32` (`arduino-cli core list` to check).
 
 ```sh
+alias arduino-cli='"/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli" --config-file ~/.arduinoIDE/arduino-cli.yaml'
+
 # 1.47" — default partition. The sketch is about 87% of 1.25 MB; if it outgrows
 # it, use PartitionScheme=min_spiffs.
-arduino-cli compile --fqbn espressif:esp32:esp32c5:CDCOnBoot=cdc \
+arduino-cli compile --fqbn esp32:esp32:esp32c5:CDCOnBoot=cdc \
   esp32-c5-lcd-1.47/ableset_display_147
 
 # 3.5" — needs PSRAM for the framebuffer, and a bigger app partition
 arduino-cli compile \
-  --fqbn espressif:esp32:esp32c5:CDCOnBoot=cdc,PSRAM=enabled,PartitionScheme=huge_app \
+  --fqbn esp32:esp32:esp32c5:CDCOnBoot=cdc,PSRAM=enabled,PartitionScheme=huge_app \
   esp32-c5-touch-lcd-3.5/ableset_display_35
 ```
 
-Check the option names with `arduino-cli board details -b espressif:esp32:esp32c5`. Some core installs don't offer `huge_app`; `min_spiffs` or a No-OTA scheme also fits.
+Check the option names with `arduino-cli board details -b esp32:esp32:esp32c5`. Some core installs don't offer `huge_app`; `min_spiffs` or a No-OTA scheme also fits.
 
 ### Arduino prototype generation (bites every time)
 
@@ -106,14 +110,14 @@ AbleSet OSC port: 39051. Docs: https://ableset.com/docs/osc
 - **Not in the resync:**
   - `beatsPosition`: AbleSet streams it constantly.
   - `remainingTimeInSet`.
-  - `setlist/songs`: large, so loaded at subscribe and when it changes.
+  - `setlist/songs` and `setlist/songDescriptions`: large, so loaded at subscribe and when they change.
 - **`/getHeartbeat`** every 2 s. AbleSet counts as gone after 10 s of silence (`ABLESET_TIMEOUT_MS`).
 - **Values used:**
   - Song and section: song name and index, section name and colour, next section, next song.
   - Loop state: loop flag, counter, loop count.
   - Progress: `activeSectionStart`/`End`, `global/beatsPosition`, `global/timeSignature`.
   - Laptop power: `computer/onBattery`.
-  - 3.5" only: `setlist/songs` and `remainingTimeInSet`.
+  - 3.5" only: `setlist/songs`, `setlist/songDescriptions`, `activeSongDescription` and `remainingTimeInSet`. Descriptions keep their case and are cut to their first line (`cleanDesc()`); `SHOW_SONG_DESCRIPTIONS` switches the setlist between 5 two-line rows and 9 one-line rows.
 - **Colours** are matched by name against a hand-picked palette (`PALETTE`), with an HSV fallback from the hex value. Colour logs are printed only when the resolved colour changes.
 - **No "stop" value.** AbleSet doesn't expose setlist stop markers over OSC (`activeSongStopDescription` is null), and project scripts can only read OSC values, so they can't provide one either.
 - **Name tags.** Song and section names can carry tags in braces (`Song {Drop}`). `cleanName()` strips them for display.
